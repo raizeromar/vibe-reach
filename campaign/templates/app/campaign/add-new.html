@@ -1,0 +1,250 @@
+{% extends "base.html" %}
+{% block title %}Create New Campaign{% endblock %}
+
+{% block base-content %}
+<div class="flex h-full font-sans">
+  <div class="flex w-full flex-col">
+    <main class="flex-1 main-content-bg pl-[100px] pr-[100px] transition-all duration-500 ease-in-out">
+      <div class="container mx-auto px-4 py-12">
+        <!-- Back Button -->
+        <div class="mb-8">
+          <a href="/campaign/view-list/" class="btn btn-ghost btn-md gap-2 text-base-content/70 hover:text-base-content transition-all duration-200">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+            </svg>
+            Back
+          </a>
+        </div>
+
+        <!-- Centered Form -->
+        <div class="flex flex-col items-center justify-center min-h-[60vh]">
+          <div class="w-full max-w-xl space-y-10">
+            <!-- Header -->
+            <div class="text-center space-y-3 transition-opacity duration-300">
+              <h1 class="text-4xl font-bold text-base-content">Let's create a new campaign</h1>
+              <p id="descText" class="text-base-content/60 text-lg">What would you like to name it?</p>
+            </div>
+
+            <!-- Form -->
+            <form id="campaignForm" class="space-y-6 transition-all duration-300">
+              <!-- Campaign Name -->
+              <div class="form-control w-full animate-fade-in">
+                <label class="label">
+                  <span class="label-text font-medium text-lg">Campaign Name</span>
+                </label>
+                <input type="text" id="campaignName" name="campaign_name" placeholder="My Campaign" class="input input-bordered w-full text-lg h-14" value="My Campaign" required />
+              </div>
+
+              <!-- Product Selection -->
+              <div id="productSelection" class="form-control w-full hidden opacity-0 transition-opacity duration-500">
+                <label class="label">
+                  <span class="label-text font-medium text-lg">Select a Product</span>
+                </label>
+                <select id="productSelect" class="select select-bordered w-full text-lg h-14" required>
+                  <option disabled selected value="">Pick a product</option>
+                  {% for product in products %}
+                    <option value="{{ product.id }}">{{ product.name }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+
+              <!-- Loading Bar -->
+              <div id="loadingBar" class="hidden w-full pt-6">
+                <progress id="progressBar" class="progress progress-primary w-full h-4" value="0" max="100"></progress>
+              </div>
+
+              <!-- Buttons -->
+              <div id="actionButtons" class="flex gap-4 justify-center pt-4 transition-all duration-300">
+                <button type="button" class="btn btn-outline btn-md" id="cancelBtn">Cancel</button>
+                <button type="button" class="btn btn-primary btn-md px-8 gap-2" id="continueBtn">
+                  Continue
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<style>
+  /* Fade animation */
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .fade-in {
+    animation: fadeIn 0.3s ease-in-out forwards;
+  }
+
+  /* Toast animations */
+  @keyframes fade-in {
+    from { opacity: 0; transform: translateX(20px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  
+  @keyframes fade-out {
+    from { opacity: 1; transform: translateX(0); }
+    to { opacity: 0; transform: translateX(20px); }
+  }
+  
+  .animate-fade-in { animation: fade-in 0.3s ease-out forwards; }
+  .animate-fade-out { animation: fade-out 0.3s ease-in forwards; }
+</style>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    const campaignName = document.getElementById('campaignName');
+    const productSelection = document.getElementById('productSelection');
+    const productSelect = document.getElementById('productSelect');
+    const continueBtn = document.getElementById('continueBtn');
+    const cancelBtn = document.getElementById('cancelBtn');
+    const loadingBar = document.getElementById('loadingBar');
+    const progressBar = document.getElementById('progressBar');
+    const descText = document.getElementById('descText');
+    const actionButtons = document.getElementById('actionButtons');
+
+    let step = 1;
+
+    continueBtn.addEventListener('click', async () => {
+      if (step === 1) {
+        if (!campaignName.value.trim()) {
+          campaignName.focus();
+          return;
+        }
+
+        productSelection.classList.remove('hidden');
+        setTimeout(() => {
+          productSelection.classList.add('fade-in');
+          productSelection.classList.remove('opacity-0');
+        }, 50);
+
+        descText.textContent = 'Now select a product for your campaign';
+        continueBtn.innerHTML = 'Create Campaign >';
+        step = 2;
+      } else if (step === 2) {
+        if (!productSelect.value) {
+          productSelect.focus();
+          return;
+        }
+
+        // Call the create campaign function
+        await createCampaign({{request.user.subscribed_company.id}}); // Assuming you have access to the company ID
+      }
+    });
+
+    cancelBtn.addEventListener('click', () => {
+      if (step === 1) {
+        window.location.href = '/campaign/view-list/';
+      } else {
+        productSelection.classList.add('opacity-0');
+        setTimeout(() => productSelection.classList.add('hidden'), 300);
+        descText.textContent = 'What would you like to name it?';
+        continueBtn.innerHTML = 'Continue >';
+        step = 1;
+      }
+    });
+
+    async function createCampaign(CompanyID) {
+      const form = document.getElementById('campaignForm');
+      if (!form.checkValidity()) {
+        form.reportValidity();
+        return false;
+      }
+
+      // Show loading state
+      continueBtn.innerHTML = `
+        <span class="loading loading-spinner"></span>
+        Creating...
+      `;
+      continueBtn.disabled = true;
+
+      // Collect form data
+      const campaignData = {
+        name: campaignName.value,
+        product: productSelect.value,
+        subscribed_company: CompanyID,
+      };
+
+      try {
+        const response = await fetch('/api/campaigns/', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+          },
+          body: JSON.stringify(campaignData)
+        });
+
+        if (!response.ok) {
+          throw new Error("Failed to create campaign");
+        }
+
+        const data = await response.json();
+        
+        // Show success toast
+        showToast('success', 'Campaign created successfully!');
+        
+        // Redirect to campaign details page
+        window.location.href = `{% url 'campaign_leads' 0 %}`.replace('0', data.id);
+        
+        return true;
+      } catch (err) {
+        console.error(err);
+        
+        // Show error toast
+        showToast('error', 'Failed to create campaign');
+
+        // Reset button state
+        continueBtn.innerHTML = 'Create Campaign >';
+        continueBtn.disabled = false;
+        
+        return false;
+      }
+    }
+
+    function showToast(type, message) {
+      const toast = document.createElement('div');
+      toast.className = `alert alert-${type} mb-4 shadow-lg animate-fade-in`;
+      toast.innerHTML = `
+        <div>
+          <span>${message}</span>
+        </div>
+      `;
+      
+      const container = document.createElement('div');
+      container.className = 'toast toast-top toast-end z-50';
+      container.appendChild(toast);
+      document.body.appendChild(container);
+      
+      setTimeout(() => {
+        toast.classList.add('animate-fade-out');
+        setTimeout(() => {
+          toast.remove();
+          container.remove();
+        }, 300);
+      }, 3000);
+    }
+
+    function getCookie(name) {
+      let cookieValue = null;
+      if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+          const cookie = cookies[i].trim();
+          if (cookie.substring(0, name.length + 1) === (name + '=')) {
+            cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+            break;
+          }
+        }
+      }
+      return cookieValue;
+    }
+  });
+</script>
+{% endblock %}

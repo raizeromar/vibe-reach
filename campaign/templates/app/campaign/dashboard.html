@@ -1,0 +1,403 @@
+{% extends "app/campaign/campaign-base.html" %}
+
+{% block title %}Campaign Dashboard{% endblock %}
+
+{% block js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock %}
+
+
+
+{% block cmp-base-content %}
+
+<style>
+/* Custom styles for dashboard */
+.stat-card {
+    transition: all 0.2s ease;
+}
+
+.stat-card:hover {
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+    transform: translateY(-2px);
+}
+
+.progress-ring {
+    transition: stroke-dasharray 0.5s ease;
+}
+
+.dropdown-content {
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.5rem;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+}
+
+.tab-content {
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.tab-content.active {
+    opacity: 1;
+}
+
+.activity-item {
+    transition: all 0.2s ease;
+}
+
+.activity-item:hover {
+    background-color: #f9fafb;
+}
+</style>
+
+        <!-- Status & Filters -->
+        <div class="flex items-center justify-between mt-8">
+            <div class="flex items-center gap-3">
+                <span class="text-sm font-medium text-gray-500">Status:</span>
+                <div class="badge text-white font-semibold text-xs py-3" id="campaign-status-badge">Draft</div>
+                <span class="text-sm font-bold text-gray-800" id="campaign-progress-text">0%</span>
+                <progress class="progress progress-primary w-40 h-1.5" value="0" max="100" id="campaign-progress-bar"></progress>
+            </div>
+            <div class="flex items-center gap-3">
+                <button class="btn bg-white border border-base-300 h-10 min-h-10 rounded-lg px-4 text-sm hover:bg-gray-50" onclick="shareCampaign()">
+                    <i class="fa-solid fa-share-nodes mr-2 text-gray-500"></i>
+                    Share
+                </button>
+                <div class="dropdown dropdown-end">
+                    <button tabindex="0" role="button" class="btn bg-white border border-base-300 h-10 min-h-10 px-3 flex items-center gap-2 rounded-lg hover:bg-gray-50">
+                        <span class="text-sm font-medium text-gray-700" id="time-filter-text">Last 4 weeks</span>
+                        <i class="fa-solid fa-chevron-down text-xs text-gray-500"></i>
+                    </button>
+                    <ul tabindex="0" class="dropdown-content menu p-2 shadow bg-white rounded-box w-52 mt-2">
+                        <li><a onclick="changeTimeFilter('Last 24 hours')">Last 24 hours</a></li>
+                        <li><a onclick="changeTimeFilter('Last 7 days')">Last 7 days</a></li>
+                        <li><a onclick="changeTimeFilter('Last 4 weeks')" class="active">Last 4 weeks</a></li>
+                        <li><a onclick="changeTimeFilter('Last 3 months')">Last 3 months</a></li>
+                        <li><a onclick="changeTimeFilter('All time')">All time</a></li>
+                    </ul>
+                </div>
+                <button class="btn bg-white border border-base-300 btn-square h-10 min-h-10 w-10 hover:bg-gray-50" onclick="openSettings()">
+                    <i class="fa-solid fa-gear text-gray-500"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Stats Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6 mt-6" id="stats-container">
+            <!-- Card 1: Sequence Started -->
+            <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm stat-card cursor-pointer">
+                <div class="flex justify-between items-center text-gray-400 text-sm font-medium">
+                    <span>Sequence started</span>
+                    <div class="tooltip tooltip-left" data-tip="Number of leads who started the sequence">
+                        <i class="fa-solid fa-circle-info hover:text-gray-600 cursor-help"></i>
+                    </div>
+                </div>
+                <div class="mt-4 text-4xl font-bold text-gray-800" id="sequence-started">232</div>
+            </div>
+
+            <!-- Card 2: Open Rate -->
+            <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm stat-card cursor-pointer">
+                <div class="flex justify-between items-center text-gray-400 text-sm font-medium">
+                    <span>Open rate</span>
+                    <div class="tooltip tooltip-left" data-tip="Percentage of emails opened by recipients">
+                        <i class="fa-solid fa-circle-info hover:text-gray-600 cursor-help"></i>
+                    </div>
+                </div>
+                <div class="mt-4 text-4xl font-bold text-gray-800">
+                    <span id="opens-count">0</span>
+                    <span class="text-gray-300 font-light mx-1">|</span>
+                    <span class="text-2xl font-semibold" id="open-rate">32%</span>
+                </div>
+            </div>
+
+            <!-- Card 3: Click Rate -->
+            <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm stat-card cursor-pointer">
+                <div class="flex justify-between items-center text-gray-400 text-sm font-medium">
+                    <span>Click rate</span>
+                    <div class="tooltip tooltip-left" data-tip="Percentage of emails where links were clicked">
+                        <i class="fa-solid fa-circle-info hover:text-gray-600 cursor-help"></i>
+                    </div>
+                </div>
+                <div class="mt-4 text-4xl font-bold text-gray-800">
+                    <span id="clicks-count">0</span>
+                    <span class="text-gray-300 font-light mx-1">|</span>
+                    <span class="text-2xl font-semibold" id="click-rate">23%</span>
+                </div>
+            </div>
+
+            <!-- Card 4: Opportunities -->
+            <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm stat-card cursor-pointer">
+                <div class="flex justify-between items-center text-gray-400 text-sm font-medium">
+                    <span>Opportunities</span>
+                    <div class="tooltip tooltip-left" data-tip="Number of qualified opportunities and their total potential value">
+                        <i class="fa-solid fa-circle-info hover:text-gray-600 cursor-help"></i>
+                    </div>
+                </div>
+                <div class="mt-4 text-4xl font-bold text-gray-800">
+                    <span id="opportunities-count">0</span>
+                    <span class="text-gray-300 font-light mx-1">|</span>
+                    <span class="text-2xl font-semibold text-gray-500" id="opportunities-value">$0</span>
+                </div>
+            </div>
+
+            <!-- Card 5: Conversions -->
+            <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm stat-card cursor-pointer">
+                <div class="flex justify-between items-center text-gray-400 text-sm font-medium">
+                    <span>Conversions</span>
+                    <div class="tooltip tooltip-left" data-tip="Number of closed deals and total revenue generated">
+                        <i class="fa-solid fa-circle-info hover:text-gray-600 cursor-help"></i>
+                    </div>
+                </div>
+                <div class="mt-4 text-4xl font-bold text-gray-800">
+                    <span id="conversions-count">0</span>
+                    <span class="text-gray-300 font-light mx-1">|</span>
+                    <span class="text-2xl font-semibold text-gray-500" id="conversions-value">$0</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Chart Section -->
+        <div class="mt-6 bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+            <div class="flex items-center justify-between mb-6">
+                <h3 class="text-lg font-semibold text-gray-800">Performance Overview</h3>
+                <div class="flex items-center gap-2">
+                    <!-- Chart Legend -->
+                    <div class="flex items-center gap-4 text-sm" id="chart-legend" style="display: none;">
+                        <div class="flex items-center gap-2">
+                            <div class="w-3 h-3 bg-blue-500 rounded-full"></div>
+                            <span class="text-gray-600">Sent</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <div class="w-3 h-3 bg-green-500 rounded-full"></div>
+                            <span class="text-gray-600">Opened</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <div class="w-3 h-3 bg-orange-500 rounded-full"></div>
+                            <span class="text-gray-600">Clicked</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <div class="w-3 h-3 bg-purple-500 rounded-full"></div>
+                            <span class="text-gray-600">Replied</span>
+                        </div>
+                    </div>
+                    <button class="btn btn-sm btn-ghost" onclick="refreshChart()">
+                        <i class="fa-solid fa-refresh mr-2"></i>Refresh
+                    </button>
+                </div>
+            </div>
+            
+<!-- Main Analytics Chart -->
+<div class="card bg-base-100 shadow-lg mb-8">
+    <div class="card-body">
+        <!-- Custom Legend - Updated to match new order -->
+        <div class="flex flex-wrap gap-x-4 gap-y-2 mb-4">
+            <div class="flex items-center gap-2 text-sm"><div class="w-3 h-3 rounded-full bg-purple-400"></div>Total replies</div>
+            <div class="flex items-center gap-2 text-sm"><div class="w-3 h-3 rounded-full bg-amber-400"></div>Total clicks</div>
+            <div class="flex items-center gap-2 text-sm"><div class="w-3 h-3 rounded-full bg-teal-400"></div>Unique opens</div>
+            <div class="flex items-center gap-2 text-sm"><div class="w-3 h-3 rounded-full bg-sky-400"></div>Total opens</div>
+            <div class="flex items-center gap-2 text-sm"><div class="w-3 h-3 rounded-full bg-blue-500"></div>Sent</div>
+        </div>
+        <div class="chart-container" style="height: 400px;">
+            <canvas id="mainAnalyticsChart"></canvas>
+        </div>
+    </div>
+</div>
+        </div>
+
+        <!-- Step Analytics & Activity -->
+        <div class="mt-6 bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+            <div role="tablist" class="tabs tabs-boxed bg-gray-100 w-max">
+                <a role="tab" class="tab tab-active bg-white text-primary shadow-sm" onclick="switchTab('analytics')">Step Analytics</a>
+                <a role="tab" class="tab" onclick="switchTab('activity')">Activity</a>
+            </div>
+
+            <!-- Step Analytics Tab -->
+            <div class="mt-6 tab-content active" id="analytics-tab">
+                <div class="space-y-4" id="step-analytics-container">
+                    <p class="text-sm text-gray-600">👋 Step analytics will appear here once the campaign is published</p>
+                </div>
+            </div>
+
+            <!-- Activity Tab -->
+            <div class="mt-6 tab-content" id="activity-tab">
+                <div class="space-y-3" id="activity-container">
+                    <p class="text-sm text-gray-600">Recent campaign activity will appear here</p>
+                    <button class="btn btn-sm btn-outline btn-primary" onclick="loadActivity()">
+                        Load Sample Activity
+                    </button>
+                </div>
+            </div>
+        </div>
+
+
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        let mainAnalyticsChart;
+
+        const generateChartLabels = () => {
+            const labels = [];
+            const today = new Date();
+            for (let i = 15; i >= 0; i--) {
+                const date = new Date(today);
+                date.setDate(today.getDate() - i);
+                labels.push(date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
+            }
+            return labels;
+        };
+
+        const chartOptions = (theme) => {
+            const isDark = theme === 'dark';
+            return {
+                maintainAspectRatio: false,
+                responsive: true,
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                        backgroundColor: isDark ? '#1f2937' : '#f9fafb',
+                        titleColor: isDark ? '#f3f4f6' : '#1f2937',
+                        bodyColor: isDark ? '#e5e7eb' : '#1f2937',
+                        borderColor: isDark ? '#374151' : '#e5e7eb',
+                        borderWidth: 1,
+                        padding: 10
+                    },
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            color: isDark ? '#e5e7eb' : '#374151',
+                            font: {
+                                size: 12,
+                                family: 'Inter, sans-serif',
+                            }
+                        },
+                        grid: {
+                            color: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.05)',
+                            drawBorder: false
+                        }
+                    },
+                    x: {
+                        ticks: {
+                            color: isDark ? '#e5e7eb' : '#374151',
+                            font: {
+                                size: 12,
+                                family: 'Inter, sans-serif',
+                            }
+                        },
+                        grid: {
+                            display: false
+                        }
+                    }
+                },
+                interaction: {
+                    mode: 'nearest',
+                    axis: 'x',
+                    intersect: false
+                },
+                elements: {
+                    line: {
+                        borderWidth: 3,
+                        tension: 0.4,
+                        borderCapStyle: 'round',
+                        borderJoinStyle: 'round'
+                    },
+                    point: {
+                        radius: 3,
+                        hoverRadius: 6,
+                        hitRadius: 10
+                    }
+                }
+            };
+        };
+
+        const createOrUpdateChart = () => {
+            const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
+            const ctx = document.getElementById('mainAnalyticsChart');
+            if (!ctx) return;
+
+            const datasets = [
+                {
+                    label: 'Sent',
+                    data: [50, 55, 60, 62, 65, 70, 72, 75, 80, 82, 85, 90, 95, 100, 110, 120],
+                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    borderColor: '#3b82f6',
+                    borderWidth: 3,
+                    fill: true
+                },
+                {
+                    label: 'Total opens',
+                    data: [15, 18, 22, 25, 28, 30, 32, 35, 40, 42, 45, 50, 55, 60, 65, 70],
+                    backgroundColor: 'rgba(56, 189, 248, 0.1)',
+                    borderColor: '#38bdf8',
+                    borderWidth: 3,
+                    fill: true
+                },
+                {
+                    label: 'Unique opens',
+                    data: [12, 15, 18, 20, 22, 25, 28, 30, 33, 35, 38, 42, 45, 48, 52, 55],
+                    backgroundColor: 'rgba(45, 212, 191, 0.1)',
+                    borderColor: '#2dd4bf',
+                    borderWidth: 3,
+                    fill: true
+                },
+                {
+                    label: 'Total clicks',
+                    data: [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 20, 22, 25],
+                    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                    borderColor: '#f59e0b',
+                    borderWidth: 3,
+                    fill: true
+                },
+                {
+                    label: 'Total replies',
+                    data: [2, 3, 3, 4, 5, 5, 6, 7, 8, 8, 9, 10, 11, 12, 13, 15],
+                    backgroundColor: 'rgba(167, 139, 250, 0.1)',
+                    borderColor: '#a78bfa',
+                    borderWidth: 3,
+                    fill: true
+                }
+            ];
+
+            datasets.sort((a, b) => {
+                const maxA = Math.max(...a.data);
+                const maxB = Math.max(...b.data);
+                return maxA - maxB;
+            });
+
+            const chartData = {
+                labels: generateChartLabels(),
+                datasets: datasets
+            };
+
+            if (mainAnalyticsChart) {
+                mainAnalyticsChart.data = chartData;
+                mainAnalyticsChart.options = chartOptions(currentTheme);
+                mainAnalyticsChart.update();
+            } else {
+                mainAnalyticsChart = new Chart(ctx.getContext('2d'), {
+                    type: 'line',
+                    data: chartData,
+                    options: chartOptions(currentTheme)
+                });
+            }
+        };
+
+        createOrUpdateChart();
+
+        const observer = new MutationObserver((mutationsList) => {
+            for (const mutation of mutationsList) {
+                if (mutation.type === 'attributes' && mutation.attributeName === 'data-theme') {
+                    createOrUpdateChart();
+                }
+            }
+        });
+        observer.observe(document.documentElement, { attributes: true });
+    });
+</script>
+
+{% endblock %}

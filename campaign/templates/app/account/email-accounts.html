@@ -1,0 +1,1162 @@
+{% extends "base-app.html" %}
+
+{% block title %}Email Accounts{% endblock %}
+
+{% block content %}
+<div class="flex-1 flex flex-col overflow-hidden bg-gray-50 p-6">
+    <!-- Header -->
+    <div class="mb-6">
+        <div class="flex justify-between items-center">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-900 mb-2">Email Accounts</h1>
+                <p class="text-gray-600">Connect and manage your email accounts for campaigns</p>
+            </div>
+            <div class="flex gap-2">
+                <select class="select select-bordered bg-white" id="status-filter">
+                    <option value="">All statuses</option>
+                    <option value="connected">Connected</option>
+                    <option value="error">Error</option>
+                    <option value="pending">Pending</option>
+                </select>
+                <button class="btn btn-primary" onclick="showAddAccountModal()">
+                    <i class="fa-solid fa-plus mr-2"></i>
+                    Add New
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Search -->
+    <div class="mb-6">
+        <div class="flex items-center gap-4">
+            <div class="relative flex-1 max-w-md">
+                <input type="text"
+                       placeholder="Search..."
+                       class="input input-bordered w-full bg-white pl-10"
+                       id="search-accounts">
+                <i class="fa-solid fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+            </div>
+            <button onclick="clearAccountFilters()" class="btn btn-ghost">Clear</button>
+            <div class="text-sm text-gray-500">
+                <span id="account-count">{{ emails|length }} accounts</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Email Accounts Table -->
+    <div class="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="table w-full">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="text-left font-semibold text-gray-900">EMAIL</th>
+                        <th class="text-left font-semibold text-gray-900">EMAILS SENT</th>
+                        <th class="text-left font-semibold text-gray-900">STATUS</th>
+                        <th class="text-left font-semibold text-gray-900">ACTIONS</th>
+                    </tr>
+                </thead>
+                <tbody id="accounts-table-body">
+                    {% for email in emails %}
+                    <tr class="hover:bg-gray-50 account-row" 
+                        onclick="openSidebar('{{ email.id }}')"
+                        data-status="{{ email.status|lower }}"
+                        data-email="{{ email.email|lower }}"
+                        data-connection="{{ email.connection_type|lower }}">
+                        <td>
+                            <div class="flex items-center gap-3">
+                                <div class="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                                    <i class="fa-solid fa-envelope text-blue-600 text-sm"></i>
+                                </div>
+                                <div>
+                                    <div class="font-medium text-gray-900">{{ email.email }}</div>
+                                    <div class="text-sm text-gray-500">Connected via {{ email.connection_type }}</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="text-sm">
+                                <div class="font-medium text-gray-900">{{ email.emails_sent }} of {{ email.daily_limit }}</div>
+                                <div class="text-gray-500">Daily limit</div>
+                            </div>
+                        </td>      
+                        <td>
+                            <div class="text-sm">
+                                {% if email.status == "connected" %}
+                                    <span class="badge badge-success text-gray-100">{{ email.status }}</span>
+                                {% elif email.status == "error" %}
+                                    <span class="badge badge-error text-gray-100">{{ email.status }}</span>
+                                {% else %}
+                                    <span class="badge badge-warning text-gray-100">{{ email.status }}</span>
+                                {% endif %}
+                            </div>
+                        </td>             
+                        <td>
+                            <div class="flex items-center gap-2">
+                                <button class="btn btn-ghost btn-xs" onclick="event.stopPropagation(); editAccount('{{ email.id }}')" title="Edit">
+                                    <i class="fa-solid fa-edit"></i>
+                                </button>
+                                <button class="btn btn-ghost btn-xs" onclick="event.stopPropagation(); testConnection('{{ email.id }}')" title="Test Connection">
+                                    <i class="fa-solid fa-plug"></i>
+                                </button>
+                                <button class="btn btn-ghost btn-xs text-red-500" onclick="event.stopPropagation(); confirmDeleteAccount('{{ email.id }}')" title="Delete">
+                                    <i class="fa-solid fa-trash"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr id="no-accounts-row">
+                        <td colspan="4" class="text-center py-16">
+                            <div class="flex flex-col items-center justify-center">
+                                <img src="https://raw.githubusercontent.com/Othunderlight/static/refs/heads/main/no-accounts.svg"
+                                     alt="No accounts illustration"
+                                     class="w-64 h-auto mx-auto">
+                                <h3 class="text-lg font-semibold text-gray-800 mb-2 mt-4">
+                                    👋 Connect your first email account
+                                </h3>
+                                <p class="text-gray-500 mb-6">
+                                    Get started by connecting an email account for your campaigns
+                                </p>
+                                <button class="btn btn-primary" onclick="showAddAccountModal()">
+                                    <i class="fa-solid fa-plus mr-2"></i>
+                                    Add Email Account
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Right Sidebar (Drawer) -->
+<div id="sidebar" class="fixed top-0 right-0 h-full w-full sm:w-3/4 md:w-2/3 lg:w-[30%] xl:max-w-4xl bg-white shadow-2xl transform translate-x-full transition-transform duration-300 ease-in-out z-50 flex flex-col">
+    
+    <!-- Drawer Header Section -->
+    <div class="flex justify-between items-center p-6 border-b border-gray-200">
+        <div class="flex items-center gap-3">
+            <!-- Avatar -->
+            <div class="avatar">
+                <div class="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                    <span class="text-white font-semibold text-sm" id="sidebar-avatar">FD</span>
+                </div>
+            </div>
+            <div>
+                <h2 class="text-base font-semibold text-gray-800" id="sidebar-email">fdudramo@gmail.com</h2>
+                <div class="flex items-center gap-2 mt-1">
+                    <div class="badge badge-success badge-sm" id="sidebar-status">Connected</div>
+                    <span class="text-xs text-gray-500" id="sidebar-connection">via IMAP</span>
+                </div>
+            </div>
+        </div>
+        <button onclick="closeSidebar()" class="btn btn-ghost btn-circle btn-sm -mr-2" aria-label="Close sidebar">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+        </button>
+    </div>
+
+    <!-- Tab Bar -->
+    <div class="border-b border-gray-200">
+        <div role="tablist" class="tabs tabs-bordered px-6">
+            <a role="tab" class="tab tab-active font-medium text-sm" onclick="switchMainTab('basic')">Basic Settings</a>
+            <a role="tab" class="tab text-gray-500 font-medium text-sm" onclick="switchMainTab('advanced')">Advanced Settings</a>
+        </div>
+    </div>
+
+    <!-- Drawer Content -->
+    <div class="flex-grow overflow-y-auto">
+        <!-- Basic Settings Tab Pane -->
+        <div id="basic-tab-pane" class="h-full">
+            <!-- VIEW Block -->
+            <div id="basic-view" class="p-6 space-y-6">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- Personal Info Card -->
+                    <div class="card bg-base-100 shadow-sm border border-gray-200">
+                        <div class="card-body p-4">
+                            <h3 class="card-title text-sm text-gray-700 mb-3">
+                                <i class="fas fa-user text-blue-500"></i>
+                                Personal Info
+                            </h3>
+                            <div class="space-y-2">
+                                <div class="flex justify-between">
+                                    <span class="text-sm text-gray-500">First Name:</span>
+                                    <span class="text-sm font-medium" id="view-first-name">John</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-sm text-gray-500">Last Name:</span>
+                                    <span class="text-sm font-medium" id="view-last-name">Doe</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Signature Card -->
+                    <div class="card bg-base-100 shadow-sm border border-gray-200">
+                        <div class="card-body p-4">
+                            <h3 class="card-title text-sm text-gray-700 mb-3">
+                                <i class="fas fa-signature text-green-500"></i>
+                                Signature
+                            </h3>
+                            <div class="text-sm text-gray-600 line-clamp-3" id="view-signature">
+                                Best regards,<br>John Doe
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Email Limits Card -->
+                <div class="card bg-base-100 shadow-sm border border-gray-200">
+                    <div class="card-body p-4">
+                        <h3 class="card-title text-sm text-gray-700 mb-3">
+                            <i class="fas fa-envelope text-purple-500"></i>
+                            Email Limits
+                        </h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div class="stat">
+                                <div class="stat-title text-xs">Daily Campaign Limit</div>
+                                <div class="stat-value text-lg" id="view-daily-campaign-limit">30</div>
+                                <div class="stat-desc text-xs">emails per day</div>
+                            </div>
+                            <div class="stat">
+                                <div class="stat-title text-xs">Daily Sending Limit</div>
+                                <div class="stat-value text-lg" id="view-daily-sending-limit">30</div>
+                                <div class="stat-desc text-xs">emails per day</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Wait Time Badge -->
+                <div class="flex items-center gap-2">
+                    <div class="badge badge-info badge-lg">
+                        <i class="fas fa-clock mr-2"></i>
+                        Min Wait: <span id="view-min-wait-time">1</span> minute(s)
+                    </div>
+                </div>
+            </div>
+
+            <!-- EDIT Block (Hidden by default) -->
+            <div id="basic-edit" class="p-6 space-y-6 hidden">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="label">
+                            <span class="label-text font-medium">First Name</span>
+                        </label>
+                        <input type="text" id="edit-first-name" class="input input-bordered w-full bg-white" placeholder="First Name">
+                    </div>
+                    <div>
+                        <label class="label">
+                            <span class="label-text font-medium">Last Name</span>
+                        </label>
+                        <input type="text" id="edit-last-name" class="input input-bordered w-full bg-white" placeholder="Last Name">
+                    </div>
+                </div>
+                <div>
+                    <label class="label">
+                        <span class="label-text font-medium">Signature</span>
+                    </label>
+                    <textarea id="edit-signature" class="textarea textarea-bordered w-full bg-white h-24" placeholder="Your email signature"></textarea>
+                </div>
+                <div>
+                    <label class="label">
+                        <span class="label-text font-medium">Daily campaign limit</span>
+                    </label>
+                    <div class="flex items-center">
+                        <input type="number" id="edit-daily-campaign-limit" class="input input-bordered bg-white" value="30">
+                        <span class="ml-4">emails</span>
+                    </div>
+                </div>
+                <div>
+                    <label class="label">
+                        <span class="label-text font-medium">Daily sending limit</span>
+                    </label>
+                    <div class="flex items-center">
+                        <input type="number" id="edit-daily-sending-limit" class="input input-bordered bg-white" value="30">
+                        <span class="ml-4">emails</span>
+                    </div>
+                </div>
+                <div>
+                    <label class="label">
+                        <span class="label-text font-medium">Minimum wait time</span>
+                    </label>
+                    <div class="flex items-center">
+                        <input type="number" id="edit-min-wait-time" class="input input-bordered bg-white" value="1">
+                        <span class="ml-4">minute(s)</span>
+                    </div>
+                    <label class="label">
+                        <span class="label-text-alt">When used with multiple campaigns</span>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <!-- Advanced Settings Tab Pane -->
+        <div id="advanced-tab-pane" class="h-full hidden">
+            <!-- VIEW Block -->
+            <div id="advanced-view" class="p-6 space-y-6">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- Connection Settings Card -->
+                    <div class="card bg-base-100 shadow-sm border border-gray-200">
+                        <div class="card-body p-4">
+                            <h3 class="card-title text-sm text-gray-700 mb-3">
+                                <i class="fas fa-server text-blue-500"></i>
+                                Connection Settings
+                            </h3>
+                            <div class="space-y-2">
+                                <div class="flex justify-between">
+                                    <span class="text-sm text-gray-500">IMAP Host:</span>
+                                    <span class="text-sm font-medium" id="view-imap-host">imap.gmail.com</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-sm text-gray-500">IMAP Port:</span>
+                                    <span class="text-sm font-medium" id="view-imap-port">993</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-sm text-gray-500">SMTP Host:</span>
+                                    <span class="text-sm font-medium" id="view-smtp-host">smtp.gmail.com</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-sm text-gray-500">SMTP Port:</span>
+                                    <span class="text-sm font-medium" id="view-smtp-port">587</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Security Settings Card -->
+                    <div class="card bg-base-100 shadow-sm border border-gray-200">
+                        <div class="card-body p-4">
+                            <h3 class="card-title text-sm text-gray-700 mb-3">
+                                <i class="fas fa-shield-alt text-green-500"></i>
+                                Security
+                            </h3>
+                            <div class="space-y-2">
+                                <div class="flex justify-between">
+                                    <span class="text-sm text-gray-500">SSL/TLS:</span>
+                                    <div class="badge badge-success badge-sm" id="view-ssl-enabled">Enabled</div>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-sm text-gray-500">Authentication:</span>
+                                    <div class="badge badge-info badge-sm" id="view-auth-method">OAuth2</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Performance Settings Card -->
+                <div class="card bg-base-100 shadow-sm border border-gray-200">
+                    <div class="card-body p-4">
+                        <h3 class="card-title text-sm text-gray-700 mb-3">
+                            <i class="fas fa-tachometer-alt text-orange-500"></i>
+                            Performance Settings
+                        </h3>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div class="stat">
+                                <div class="stat-title text-xs">Connection Timeout</div>
+                                <div class="stat-value text-lg" id="view-connection-timeout">30</div>
+                                <div class="stat-desc text-xs">seconds</div>
+                            </div>
+                            <div class="stat">
+                                <div class="stat-title text-xs">Retry Attempts</div>
+                                <div class="stat-value text-lg" id="view-retry-attempts">3</div>
+                                <div class="stat-desc text-xs">times</div>
+                            </div>
+                            <div class="stat">
+                                <div class="stat-title text-xs">Batch Size</div>
+                                <div class="stat-value text-lg" id="view-batch-size">50</div>
+                                <div class="stat-desc text-xs">emails</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- EDIT Block (Hidden by default) -->
+            <div id="advanced-edit" class="p-6 space-y-6 hidden">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="label">
+                            <span class="label-text font-medium">IMAP Host</span>
+                        </label>
+                        <input type="text" id="edit-imap-host" class="input input-bordered w-full bg-white" placeholder="imap.gmail.com">
+                    </div>
+                    <div>
+                        <label class="label">
+                            <span class="label-text font-medium">IMAP Port</span>
+                        </label>
+                        <input type="number" id="edit-imap-port" class="input input-bordered w-full bg-white" placeholder="993">
+                    </div>
+                    <div>
+                        <label class="label">
+                            <span class="label-text font-medium">SMTP Host</span>
+                        </label>
+                        <input type="text" id="edit-smtp-host" class="input input-bordered w-full bg-white" placeholder="smtp.gmail.com">
+                    </div>
+                    <div>
+                        <label class="label">
+                            <span class="label-text font-medium">SMTP Port</span>
+                        </label>
+                        <input type="number" id="edit-smtp-port" class="input input-bordered w-full bg-white" placeholder="587">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="label">
+                            <span class="label-text font-medium">Connection Timeout</span>
+                        </label>
+                        <div class="flex items-center">
+                            <input type="number" id="edit-connection-timeout" class="input input-bordered bg-white" value="30">
+                            <span class="ml-4">seconds</span>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="label">
+                            <span class="label-text font-medium">Retry Attempts</span>
+                        </label>
+                        <input type="number" id="edit-retry-attempts" class="input input-bordered w-full bg-white" value="3">
+                    </div>
+                    <div>
+                        <label class="label">
+                            <span class="label-text font-medium">Batch Size</span>
+                        </label>
+                        <div class="flex items-center">
+                            <input type="number" id="edit-batch-size" class="input input-bordered bg-white" value="50">
+                            <span class="ml-4">emails</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="form-control">
+                    <label class="label cursor-pointer">
+                        <span class="label-text font-medium">Enable SSL/TLS</span>
+                        <input type="checkbox" id="edit-ssl-enabled" class="checkbox checkbox-primary" checked>
+                    </label>
+                </div>
+                <div>
+                    <label class="label">
+                        <span class="label-text font-medium">Authentication Method</span>
+                    </label>
+                    <select id="edit-auth-method" class="select select-bordered w-full bg-white">
+                        <option value="oauth2">OAuth2</option>
+                        <option value="password">Password</option>
+                        <option value="app-password">App Password</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sticky Footer with Action Buttons -->
+    <div class="border-t border-gray-200 p-6 bg-white">
+        <div class="flex justify-end gap-3">
+            <button id="edit-btn" class="btn btn-primary" onclick="toggleEditMode(true)">
+                <i class="fas fa-edit mr-2"></i>
+                Edit
+            </button>
+            <button id="save-btn" class="btn btn-success hidden" onclick="saveSettings()">
+                <i class="fas fa-save mr-2"></i>
+                Save
+            </button>
+            <button id="cancel-btn" class="btn btn-ghost hidden" onclick="toggleEditMode(false)">
+                <i class="fas fa-times mr-2"></i>
+                Cancel
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Overlay (hidden by default) -->
+<div id="overlay" class="fixed inset-0 bg-black bg-opacity-50 z-40 hidden"></div>
+
+<!-- Add Account Modal -->
+<dialog id="add-account-modal" class="modal">
+    <div class="modal-box max-w-md">
+        <h3 class="font-bold text-lg mb-4">Connect existing accounts</h3>
+        <div class="space-y-4 mb-6">
+            <div class="flex items-center gap-3 text-sm text-gray-600">
+                <i class="fa-solid fa-check text-green-500"></i>
+                <span>Connect any IMAP or SMTP email provider</span>
+            </div>
+        </div>
+        <div class="space-y-3">
+            <button class="w-full p-4 border border-gray-200 rounded-lg hover:border-gray-300 hover:bg-gray-50 flex items-center gap-3"
+                    onclick="selectProvider('google')">
+                <div class="w-10 h-10 bg-white rounded-lg border border-gray-200 flex items-center justify-center">
+                    <i class="fab fa-google text-red-500 text-lg"></i>
+                </div>
+                <div class="text-left">
+                    <div class="font-medium text-gray-900">Google</div>
+                    <div class="text-sm text-gray-500">Gmail / G-Suite</div>
+                </div>
+            </button>
+            <button class="w-full p-4 border border-gray-200 rounded-lg hover:border-gray-300 hover:bg-gray-50 flex items-center gap-3"
+                    onclick="selectProvider('microsoft')">
+                <div class="w-10 h-10 bg-white rounded-lg border border-gray-200 flex items-center justify-center">
+                    <i class="fab fa-microsoft text-blue-500 text-lg"></i>
+                </div>
+                <div class="text-left">
+                    <div class="font-medium text-gray-900">Microsoft</div>
+                    <div class="text-sm text-gray-500">Office 365 / Outlook</div>
+                </div>
+            </button>
+            <button class="w-full p-4 border border-gray-200 rounded-lg hover:border-gray-300 hover:bg-gray-50 flex items-center gap-3"
+                    onclick="selectProvider('imap')">
+                <div class="w-10 h-10 bg-white rounded-lg border border-gray-200 flex items-center justify-center">
+                    <i class="fa-solid fa-envelope text-gray-600 text-lg"></i>
+                </div>
+                <div class="text-left">
+                    <div class="font-medium text-gray-900">Any Provider</div>
+                    <div class="text-sm text-gray-500">IMAP / SMTP</div>
+                </div>
+            </button>
+        </div>
+        <div class="modal-action">
+            <button class="btn btn-ghost" onclick="ModalSystem.close('add-account-modal')">Cancel</button>
+        </div>
+    </div>
+    <form method="dialog" class="modal-backdrop">
+        <button>close</button>
+    </form>
+</dialog>
+
+<!-- Basic Info Modal -->
+<dialog id="basic-info-modal" class="modal">
+    <div class="modal-box max-w-md">
+        <div class="flex items-center gap-2 mb-4">
+            <button class="btn btn-ghost btn-sm" onclick="goBackToProviders()">
+                <i class="fa-solid fa-arrow-left"></i>
+                Back
+            </button>
+            <span class="text-sm text-gray-500">Select another provider</span>
+        </div>
+        <div class="text-center mb-6">
+            <div class="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center mx-auto mb-3">
+                <i class="fa-solid fa-envelope text-gray-600 text-lg"></i>
+            </div>
+            <h3 class="font-bold text-lg">Connect Any Provider Account</h3>
+            <p class="text-sm text-gray-500">IMAP / SMTP</p>
+        </div>
+        <form id="basic-info-form" class="space-y-4">
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="label">
+                        <span class="label-text">First Name</span>
+                    </label>
+                    <input type="text" placeholder="First Name" class="input input-bordered w-full bg-white" id="first-name" required>
+                </div>
+                <div>
+                    <label class="label">
+                        <span class="label-text">Last Name</span>
+                    </label>
+                    <input type="text" placeholder="Last Name" class="input input-bordered w-full bg-white" id="last-name" required>
+                </div>
+            </div>
+            <div>
+                <label class="label">
+                    <span class="label-text">Email *</span>
+                </label>
+                <input type="email" placeholder="Email address to connect" class="input input-bordered w-full bg-white" id="email-address" required>
+            </div>
+        </form>
+        <div class="modal-action">
+            <button class="btn btn-success w-full text-gray-100" onclick="proceedToImapSettings()">
+                Next >
+            </button>
+        </div>
+    </div>
+    <form method="dialog" class="modal-backdrop">
+        <button>close</button>
+    </form>
+</dialog>
+
+<!-- IMAP Settings Modal -->
+<dialog id="imap-settings-modal" class="modal">
+    <div class="modal-box max-w-md">
+        <div class="flex items-center gap-2 mb-4">
+            <button class="btn btn-ghost btn-sm" onclick="goBackToBasicInfo()">
+                <i class="fa-solid fa-arrow-left"></i>
+                Back
+            </button>
+            <span class="text-sm text-gray-500">Select another provider</span>
+        </div>
+        <div class="text-center mb-6">
+            <div class="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mx-auto mb-3">
+                <i class="fa-solid fa-download text-blue-600 text-lg"></i>
+            </div>
+            <h3 class="font-bold text-lg">IMAP</h3>
+            <p class="text-sm text-gray-500">IMAP Setup</p>
+        </div>
+        <form id="imap-settings-form" class="space-y-4">
+            <div>
+                <label class="label">
+                    <span class="label-text">IMAP Username *</span>
+                </label>
+                <input type="text" placeholder="IMAP Username" class="input input-bordered w-full bg-white" id="imap-username" required>
+            </div>
+            <div>
+                <label class="label">
+                    <span class="label-text">IMAP Password *</span>
+                </label>
+                <input type="password" placeholder="IMAP Password" class="input input-bordered w-full bg-white" id="imap-password" required>
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="label">
+                        <span class="label-text">IMAP Host *</span>
+                    </label>
+                    <input type="text" placeholder="imap.example.com" class="input input-bordered w-full bg-white" id="imap-host" required>
+                </div>
+                <div>
+                    <label class="label">
+                        <span class="label-text">IMAP Port *</span>
+                    </label>
+                    <input type="number" placeholder="993" class="input input-bordered w-full bg-white" id="imap-port" value="993" required>
+                </div>
+            </div>
+        </form>
+        <div class="modal-action flex gap-2">
+            <button class="btn btn-ghost flex-1" onclick="goBackToBasicInfo()">
+                < Back
+            </button>
+            <button class="btn btn-success flex-1 text-gray-100" onclick="testImapConnection()">
+                Next >
+            </button>
+        </div>
+    </div>
+    <form method="dialog" class="modal-backdrop">
+        <button>close</button>
+    </form>
+</dialog>
+
+<!-- Loading Modal -->
+<dialog id="loading-modal" class="modal">
+    <div class="modal-box max-w-sm text-center">
+        <div class="mb-6">
+            <div class="loading loading-spinner loading-lg text-primary mx-auto"></div>
+        </div>
+        <h3 class="font-bold text-lg mb-2">Testing IMAP Connection</h3>
+        <p class="text-gray-600">Please wait while we verify your email settings...</p>
+    </div>
+</dialog>
+
+<!-- Success Modal -->
+<dialog id="success-modal" class="modal">
+    <div class="modal-box max-w-sm text-center">
+        <div class="mb-6">
+            <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
+                <i class="fa-solid fa-check text-green-600 text-2xl"></i>
+            </div>
+        </div>
+        <h3 class="font-bold text-lg mb-2">Connection Successful!</h3>
+        <p class="text-gray-600 mb-6">Your email account has been connected successfully and is ready to use.</p>
+        <div class="modal-action">
+            <button class="btn btn-primary w-full" onclick="closeSuccessModal()">
+                Done
+            </button>
+        </div>
+    </div>
+    <form method="dialog" class="modal-backdrop">
+        <button>close</button>
+    </form>
+</dialog>
+
+<script>
+
+// right side bar
+function openSidebar(id) {
+    // 1. Show drawer + overlay immediately with loading spinner
+    document.getElementById('sidebar').classList.remove('translate-x-full');
+    document.getElementById('overlay').classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+    
+    // Show loading state in sidebar
+    document.getElementById('sidebar-email').innerHTML = '<div class="loading loading-spinner loading-sm text-primary"></div>';
+    
+    // 2. Call fetchAccountDetails(id)
+    fetchAccountDetails(id);
+}
+
+// 3. Fetch account details from API
+function fetchAccountDetails(id) {
+    // Show skeleton/loader meanwhile
+    showAccountDetailsSkeleton();
+    
+    fetch(`/api/email-accounts/${id}/`)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Failed to fetch account details');
+            }
+            return response.json();
+        })
+        .then(data => {
+            // On success call populateSidebar(data)
+            populateSidebar(data);
+        })
+        .catch(error => {
+            console.error('Error fetching account details:', error);
+            // On error close drawer and trigger toast "unable to load"
+            closeSidebar();
+            if (window.ModalSystem) {
+                window.ModalSystem.toast('Unable to load', 'error');
+            }
+        });
+}
+
+// Helper function to show skeleton/loader in sidebar
+function showAccountDetailsSkeleton() {
+    // Show loading spinner in email field
+    document.getElementById('sidebar-email').innerHTML = '<div class="loading loading-spinner loading-sm text-primary"></div>';
+    
+    // Show skeleton in other sidebar elements
+    document.getElementById('sidebar-status').textContent = 'Loading...';
+    document.getElementById('sidebar-status').className = 'badge badge-sm badge-ghost';
+    document.getElementById('sidebar-connection').textContent = 'Loading...';
+    
+    // Show skeleton in view fields
+    const skeletonText = '...';
+    document.getElementById('view-first-name').textContent = skeletonText;
+    document.getElementById('view-last-name').textContent = skeletonText;
+    document.getElementById('view-signature').textContent = 'Loading signature...';
+    document.getElementById('view-daily-campaign-limit').textContent = skeletonText;
+    document.getElementById('view-daily-sending-limit').textContent = skeletonText;
+    document.getElementById('view-min-wait-time').textContent = skeletonText;
+    
+    // Show skeleton in advanced settings
+    document.getElementById('view-imap-host').textContent = skeletonText;
+    document.getElementById('view-imap-port').textContent = skeletonText;
+    document.getElementById('view-smtp-host').textContent = skeletonText;
+    document.getElementById('view-smtp-port').textContent = skeletonText;
+    document.getElementById('view-connection-timeout').textContent = skeletonText;
+    document.getElementById('view-retry-attempts').textContent = skeletonText;
+    document.getElementById('view-batch-size').textContent = skeletonText;
+    document.getElementById('view-ssl-enabled').textContent = 'Loading...';
+    document.getElementById('view-ssl-enabled').className = 'badge badge-sm badge-ghost';
+    document.getElementById('view-auth-method').textContent = 'Loading...';
+}
+
+// Helper function to populate sidebar with account data
+function populateSidebar(accountData) {
+    // Update header
+    document.getElementById('sidebar-email').textContent = accountData.email || 'Unknown Account';
+    
+    // Update avatar (first letters of email)
+    const avatarElement = document.getElementById('sidebar-avatar');
+    if (accountData.email) {
+        const emailParts = accountData.email.split('@')[0];
+        avatarElement.textContent = emailParts.substring(0, 2).toUpperCase();
+    }
+    
+    // Update status and connection
+    const statusElement = document.getElementById('sidebar-status');
+    const connectionElement = document.getElementById('sidebar-connection');
+    
+    if (accountData.status) {
+        statusElement.textContent = accountData.status;
+        statusElement.className = `badge badge-sm ${
+            accountData.status === 'connected' ? 'badge-success' :
+            accountData.status === 'error' ? 'badge-error' : 'badge-warning'
+        }`;
+    }
+    
+    if (accountData.connection_type) {
+        connectionElement.textContent = `via ${accountData.connection_type}`;
+    }
+    
+    // Update view fields with account data
+    document.getElementById('view-first-name').textContent = accountData.first_name || 'N/A';
+    document.getElementById('view-last-name').textContent = accountData.last_name || 'N/A';
+    document.getElementById('view-signature').innerHTML = (accountData.signature || 'No signature').replace(/\n/g, '<br>');
+    document.getElementById('view-daily-campaign-limit').textContent = accountData.daily_campaign_limit || '30';
+    document.getElementById('view-daily-sending-limit').textContent = accountData.daily_sending_limit || '30';
+    document.getElementById('view-min-wait-time').textContent = accountData.min_wait_time || '1';
+    
+    // Update advanced settings if available
+    if (accountData.imap_host) document.getElementById('view-imap-host').textContent = accountData.imap_host;
+    if (accountData.imap_port) document.getElementById('view-imap-port').textContent = accountData.imap_port;
+    if (accountData.smtp_host) document.getElementById('view-smtp-host').textContent = accountData.smtp_host;
+    if (accountData.smtp_port) document.getElementById('view-smtp-port').textContent = accountData.smtp_port;
+    if (accountData.connection_timeout) document.getElementById('view-connection-timeout').textContent = accountData.connection_timeout;
+    if (accountData.retry_attempts) document.getElementById('view-retry-attempts').textContent = accountData.retry_attempts;
+    if (accountData.batch_size) document.getElementById('view-batch-size').textContent = accountData.batch_size;
+    
+    // Update SSL status
+    const sslElement = document.getElementById('view-ssl-enabled');
+    if (accountData.ssl_enabled !== undefined) {
+        sslElement.textContent = accountData.ssl_enabled ? 'Enabled' : 'Disabled';
+        sslElement.className = `badge badge-sm ${accountData.ssl_enabled ? 'badge-success' : 'badge-error'}`;
+    }
+    
+    // Update auth method
+    if (accountData.auth_method) {
+        document.getElementById('view-auth-method').textContent = accountData.auth_method.charAt(0).toUpperCase() + accountData.auth_method.slice(1);
+    }
+}
+
+function closeSidebar() {
+    document.getElementById('sidebar').classList.add('translate-x-full');
+    document.getElementById('overlay').classList.add('hidden');
+    document.body.style.overflow = 'auto';
+}
+
+// Close sidebar when clicking on overlay
+document.getElementById('overlay').addEventListener('click', closeSidebar);
+
+// Modal Management Functions
+function showAddAccountModal() {
+    document.getElementById('add-account-modal').showModal();
+}
+
+function selectProvider(provider) {
+    document.getElementById('add-account-modal').close();
+    if (provider === 'imap' || provider === 'google' || provider === 'microsoft') {
+        document.getElementById('basic-info-modal').showModal();
+    }
+}
+
+function goBackToProviders() {
+    document.getElementById('basic-info-modal').close();
+    document.getElementById('add-account-modal').showModal();
+}
+
+function proceedToImapSettings() {
+    if (document.getElementById('basic-info-form').checkValidity()) {
+        document.getElementById('basic-info-modal').close();
+        document.getElementById('imap-settings-modal').showModal();
+    } else {
+        document.getElementById('basic-info-form').reportValidity();
+    }
+}
+
+function goBackToBasicInfo() {
+    document.getElementById('imap-settings-modal').close();
+    document.getElementById('basic-info-modal').showModal();
+}
+
+function testImapConnection() {
+    if (document.getElementById('imap-settings-form').checkValidity()) {
+        document.getElementById('imap-settings-modal').close();
+        document.getElementById('loading-modal').showModal();
+        setTimeout(() => {
+            document.getElementById('loading-modal').close();
+            document.getElementById('success-modal').showModal();
+        }, 2000);
+    } else {
+        document.getElementById('imap-settings-form').reportValidity();
+    }
+}
+
+function closeSuccessModal() {
+    document.getElementById('success-modal').close();
+}
+
+// Initialize modals when needed
+document.addEventListener('DOMContentLoaded', function() {
+    // Example: Show add account modal when a button is clicked
+    document.querySelector('.btn-show-account-modal').addEventListener('click', showAddAccountModal);
+});
+
+// Main tab switching function (Basic Settings / Advanced Settings)
+function switchMainTab(tabName) {
+    const basicTabPane = document.getElementById('basic-tab-pane');
+    const advancedTabPane = document.getElementById('advanced-tab-pane');
+    const tabs = document.querySelectorAll('.tabs .tab');
+
+    if (tabName === 'basic') {
+        basicTabPane.classList.remove('hidden');
+        advancedTabPane.classList.add('hidden');
+        tabs[0].classList.add('tab-active');
+        tabs[0].classList.remove('text-gray-500');
+        tabs[1].classList.remove('tab-active');
+        tabs[1].classList.add('text-gray-500');
+    } else {
+        basicTabPane.classList.add('hidden');
+        advancedTabPane.classList.remove('hidden');
+        tabs[0].classList.remove('tab-active');
+        tabs[0].classList.add('text-gray-500');
+        tabs[1].classList.add('tab-active');
+        tabs[1].classList.remove('text-gray-500');
+    }
+}
+
+// Toggle edit mode function
+function toggleEditMode(isEdit) {
+    const editBtn = document.getElementById('edit-btn');
+    const saveBtn = document.getElementById('save-btn');
+    const cancelBtn = document.getElementById('cancel-btn');
+    
+    // Basic Settings blocks
+    const basicView = document.getElementById('basic-view');
+    const basicEdit = document.getElementById('basic-edit');
+    
+    // Advanced Settings blocks
+    const advancedView = document.getElementById('advanced-view');
+    const advancedEdit = document.getElementById('advanced-edit');
+    
+    if (isEdit) {
+        // Show edit blocks, hide view blocks
+        basicView.classList.add('hidden');
+        basicEdit.classList.remove('hidden');
+        advancedView.classList.add('hidden');
+        advancedEdit.classList.remove('hidden');
+        
+        // Update buttons
+        editBtn.classList.add('hidden');
+        saveBtn.classList.remove('hidden');
+        cancelBtn.classList.remove('hidden');
+        
+        // Load current values into edit fields
+        loadCurrentValuesIntoEditForm();
+    } else {
+        // Show view blocks, hide edit blocks
+        basicView.classList.remove('hidden');
+        basicEdit.classList.add('hidden');
+        advancedView.classList.remove('hidden');
+        advancedEdit.classList.add('hidden');
+        
+        // Update buttons
+        editBtn.classList.remove('hidden');
+        saveBtn.classList.add('hidden');
+        cancelBtn.classList.add('hidden');
+    }
+}
+
+// Load current values into edit form
+function loadCurrentValuesIntoEditForm() {
+    // Basic settings
+    document.getElementById('edit-first-name').value = document.getElementById('view-first-name').textContent;
+    document.getElementById('edit-last-name').value = document.getElementById('view-last-name').textContent;
+    document.getElementById('edit-signature').value = document.getElementById('view-signature').innerHTML.replace(/<br>/g, '\n');
+    document.getElementById('edit-daily-campaign-limit').value = document.getElementById('view-daily-campaign-limit').textContent;
+    document.getElementById('edit-daily-sending-limit').value = document.getElementById('view-daily-sending-limit').textContent;
+    document.getElementById('edit-min-wait-time').value = document.getElementById('view-min-wait-time').textContent;
+    
+    // Advanced settings
+    document.getElementById('edit-imap-host').value = document.getElementById('view-imap-host').textContent;
+    document.getElementById('edit-imap-port').value = document.getElementById('view-imap-port').textContent;
+    document.getElementById('edit-smtp-host').value = document.getElementById('view-smtp-host').textContent;
+    document.getElementById('edit-smtp-port').value = document.getElementById('view-smtp-port').textContent;
+    document.getElementById('edit-connection-timeout').value = document.getElementById('view-connection-timeout').textContent;
+    document.getElementById('edit-retry-attempts').value = document.getElementById('view-retry-attempts').textContent;
+    document.getElementById('edit-batch-size').value = document.getElementById('view-batch-size').textContent;
+    
+    // SSL checkbox
+    const sslEnabled = document.getElementById('view-ssl-enabled').textContent.toLowerCase() === 'enabled';
+    document.getElementById('edit-ssl-enabled').checked = sslEnabled;
+    
+    // Auth method
+    const authMethod = document.getElementById('view-auth-method').textContent.toLowerCase();
+    document.getElementById('edit-auth-method').value = authMethod;
+}
+
+// Save settings function
+function saveSettings() {
+    // Collect data from edit form fields
+    const basicSettings = {
+        firstName: document.getElementById('edit-first-name').value,
+        lastName: document.getElementById('edit-last-name').value,
+        signature: document.getElementById('edit-signature').value,
+        dailyCampaignLimit: document.getElementById('edit-daily-campaign-limit').value,
+        dailySendingLimit: document.getElementById('edit-daily-sending-limit').value,
+        minWaitTime: document.getElementById('edit-min-wait-time').value
+    };
+    
+    const advancedSettings = {
+        imapHost: document.getElementById('edit-imap-host').value,
+        imapPort: document.getElementById('edit-imap-port').value,
+        smtpHost: document.getElementById('edit-smtp-host').value,
+        smtpPort: document.getElementById('edit-smtp-port').value,
+        connectionTimeout: document.getElementById('edit-connection-timeout').value,
+        retryAttempts: document.getElementById('edit-retry-attempts').value,
+        batchSize: document.getElementById('edit-batch-size').value,
+        sslEnabled: document.getElementById('edit-ssl-enabled').checked,
+        authMethod: document.getElementById('edit-auth-method').value
+    };
+
+    // Update the view blocks with new values
+    updateViewBlocks(basicSettings, advancedSettings);
+    
+    // Exit edit mode
+    toggleEditMode(false);
+    
+    // Here you would typically send this data to your backend
+    console.log('Saving settings:', { basicSettings, advancedSettings });
+
+    // Show a success message
+    alert('Settings saved successfully!');
+}
+
+// Update view blocks with saved values
+function updateViewBlocks(basicSettings, advancedSettings) {
+    // Update basic settings view
+    document.getElementById('view-first-name').textContent = basicSettings.firstName;
+    document.getElementById('view-last-name').textContent = basicSettings.lastName;
+    document.getElementById('view-signature').innerHTML = basicSettings.signature.replace(/\n/g, '<br>');
+    document.getElementById('view-daily-campaign-limit').textContent = basicSettings.dailyCampaignLimit;
+    document.getElementById('view-daily-sending-limit').textContent = basicSettings.dailySendingLimit;
+    document.getElementById('view-min-wait-time').textContent = basicSettings.minWaitTime;
+    
+    // Update advanced settings view
+    document.getElementById('view-imap-host').textContent = advancedSettings.imapHost;
+    document.getElementById('view-imap-port').textContent = advancedSettings.imapPort;
+    document.getElementById('view-smtp-host').textContent = advancedSettings.smtpHost;
+    document.getElementById('view-smtp-port').textContent = advancedSettings.smtpPort;
+    document.getElementById('view-connection-timeout').textContent = advancedSettings.connectionTimeout;
+    document.getElementById('view-retry-attempts').textContent = advancedSettings.retryAttempts;
+    document.getElementById('view-batch-size').textContent = advancedSettings.batchSize;
+    
+    // Update SSL status
+    const sslBadge = document.getElementById('view-ssl-enabled');
+    if (advancedSettings.sslEnabled) {
+        sslBadge.textContent = 'Enabled';
+        sslBadge.className = 'badge badge-success badge-sm';
+    } else {
+        sslBadge.textContent = 'Disabled';
+        sslBadge.className = 'badge badge-error badge-sm';
+    }
+    
+    // Update auth method
+    const authBadge = document.getElementById('view-auth-method');
+    authBadge.textContent = advancedSettings.authMethod.charAt(0).toUpperCase() + advancedSettings.authMethod.slice(1);
+}
+
+// Account filtering functionality
+function filterAccounts() {
+    const searchTerm = document.getElementById('search-accounts').value.toLowerCase();
+    const statusFilter = document.getElementById('status-filter').value.toLowerCase();
+    
+    const rows = document.querySelectorAll('.account-row');
+    let visibleCount = 0;
+
+    rows.forEach(row => {
+        const accountText = row.textContent.toLowerCase();
+        const email = row.getAttribute('data-email').toLowerCase();
+        const status = row.getAttribute('data-status').toLowerCase();
+        const connection = row.getAttribute('data-connection').toLowerCase();
+        
+        const matchesSearch = searchTerm === '' || 
+                            accountText.includes(searchTerm) || 
+                            email.includes(searchTerm) ||
+                            connection.includes(searchTerm);
+        const matchesStatus = statusFilter === '' || status === statusFilter;
+
+        if (matchesSearch && matchesStatus) {
+            row.style.display = '';
+            visibleCount++;
+        } else {
+            row.style.display = 'none';
+        }
+    });
+
+    // Update empty state
+    const noAccountsRow = document.getElementById('no-accounts-row');
+    if (visibleCount === 0 && rows.length > 0) {
+        if (noAccountsRow) noAccountsRow.style.display = '';
+    } else {
+        if (noAccountsRow) noAccountsRow.style.display = 'none';
+    }
+
+    // Update counter
+    document.getElementById('account-count').textContent = `${visibleCount} account${visibleCount !== 1 ? 's' : ''}`;
+
+}
+
+function clearAccountFilters() {
+    document.getElementById('search-accounts').value = '';
+    document.getElementById('status-filter').value = '';
+    filterAccounts();
+}
+
+// Action functions (only for table actions, not modal actions)
+function editAccount(id) {
+    ModalSystem.confirm({
+        title: 'Edit Account',
+        message: `You are about to edit the settings for account ${id}. Do you want to proceed?`,
+        confirmText: 'Edit',
+        action: () => {
+            ModalSystem.toast(`Opening settings for account ${id}...`);
+            // In a real app, you would redirect to an edit page:
+            // window.location.href = `/accounts/${id}/edit`;
+        }
+    });
+}
+
+function testConnection(id) {
+    ModalSystem.confirm({
+        title: 'Test Connection',
+        message: `This will test the IMAP and SMTP connection for account ${id}.`,
+        confirmText: 'Test',
+        action: () => {
+            ModalSystem.toast(`Testing connection for account ${id}...`, 'info');
+            // Here you would trigger the backend test
+        }
+    });
+}
+
+function confirmDeleteAccount(id) {
+    ModalSystem.confirm({
+        title: 'Delete Account',
+        message: `Are you sure you want to delete account ${id}? This action cannot be undone.`,
+        confirmText: 'Delete',
+        confirmClass: 'btn-error',
+        action: () => {
+            fetch(`/accounts/${id}/delete/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': getCookie('csrftoken'),
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Remove the row from the table
+                    const row = document.querySelector(`tr[data-id="${id}"]`);
+                    if (row) row.remove();
+                    
+                    // Update counts
+                    filterAccounts();
+                    
+                    ModalSystem.toast('Account deleted successfully!', 'success');
+                } else {
+                    ModalSystem.toast('Error deleting account', 'error');
+                }
+            })
+            .catch(error => {
+                ModalSystem.toast('Error deleting account', 'error');
+            });
+        }
+    });
+}
+
+// Helper function to get CSRF token
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+    // Add event listeners for filters
+    document.getElementById('search-accounts').addEventListener('input', filterAccounts);
+    document.getElementById('status-filter').addEventListener('change', filterAccounts);
+    
+    // Hide empty state if we have accounts
+    const noAccountsRow = document.getElementById('no-accounts-row');
+    if (noAccountsRow && document.querySelectorAll('.account-row').length > 0) {
+        noAccountsRow.style.display = 'none';
+    }
+});
+</script>
+{% endblock %}
