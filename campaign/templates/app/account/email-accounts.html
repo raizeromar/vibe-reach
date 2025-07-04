@@ -680,6 +680,9 @@ function openSidebar(id) {
 }
 
 // 3. Fetch account details from API
+// Global variable to store current account data
+let currentAccountData = null;
+
 function fetchAccountDetails(id) {
     // Show skeleton/loader meanwhile
     showAccountDetailsSkeleton();
@@ -687,11 +690,19 @@ function fetchAccountDetails(id) {
     fetch(`/api/email-accounts/${id}/`)
         .then(response => {
             if (!response.ok) {
-                throw new Error('Failed to fetch account details');
+                // Try to parse error response
+                return response.json().then(err => {
+                    throw new Error(err.detail || `Failed to fetch account details. Status: ${response.status}`);
+                }).catch(() => {
+                    // If parsing error response fails, throw generic error
+                    throw new Error(`Failed to fetch account details. Status: ${response.status}`);
+                });
             }
             return response.json();
         })
         .then(data => {
+            // Store fetched data globally
+            currentAccountData = data;
             // On success call populateSidebar(data)
             populateSidebar(data);
         })
@@ -700,41 +711,111 @@ function fetchAccountDetails(id) {
             // On error close drawer and trigger toast "unable to load"
             closeSidebar();
             if (window.ModalSystem) {
-                window.ModalSystem.toast('Unable to load', 'error');
+                window.ModalSystem.toast(error.message || 'Unable to load account details', 'error');
             }
         });
 }
+
+// Helper function to update table row (example)
+function updateTableRow(accountData) {
+    const row = document.querySelector(`tr[onclick="openSidebar('${accountData.id}')"]`);
+    if (row) {
+        // Update email cell
+        const emailDiv = row.cells[0].querySelector('.font-medium.text-gray-900');
+        if (emailDiv) emailDiv.textContent = accountData.email;
+
+        const connectionDiv = row.cells[0].querySelector('.text-sm.text-gray-500');
+         if (connectionDiv) {
+            const connectionTypeDisplayMap = {
+                'gmail': 'Gmail', 'outlook': 'Outlook', 'yahoo': 'Yahoo', 'imap/smtp': 'IMAP/SMTP',
+            };
+            connectionDiv.textContent = `Connected via ${connectionTypeDisplayMap[accountData.connection_type] || accountData.connection_type}`;
+        }
+
+
+        // Update emails sent cell
+        const emailsSentDiv = row.cells[1].querySelector('.font-medium.text-gray-900');
+        if (emailsSentDiv) emailsSentDiv.textContent = `${accountData.emails_sent} of ${accountData.daily_limit}`;
+
+        // Update status cell
+        const statusBadge = row.cells[2].querySelector('.badge');
+        if (statusBadge) {
+            statusBadge.textContent = accountData.status.charAt(0).toUpperCase() + accountData.status.slice(1);
+            statusBadge.className = `badge ${
+                accountData.status === "connected" ? 'badge-success text-success-content' :
+                accountData.status === "error" ? 'badge-error text-error-content' :
+                accountData.status === 'pending' ? 'badge-warning text-warning-content' : 'badge-ghost'
+            }`;
+        }
+        // Update data attributes for filtering
+        row.setAttribute('data-status', accountData.status.toLowerCase());
+        row.setAttribute('data-email', accountData.email.toLowerCase());
+        row.setAttribute('data-connection', accountData.connection_type.toLowerCase());
+    }
+}
+
 
 // Helper function to show skeleton/loader in sidebar
 function showAccountDetailsSkeleton() {
     // Show loading spinner in email field
     document.getElementById('sidebar-email').innerHTML = '<div class="loading loading-spinner loading-sm text-primary"></div>';
+    document.getElementById('sidebar-avatar').textContent = '..';
     
     // Show skeleton in other sidebar elements
     document.getElementById('sidebar-status').textContent = 'Loading...';
     document.getElementById('sidebar-status').className = 'badge badge-sm badge-ghost';
     document.getElementById('sidebar-connection').textContent = 'Loading...';
     
-    // Show skeleton in view fields
-    const skeletonText = '...';
-    document.getElementById('view-first-name').textContent = skeletonText;
-    document.getElementById('view-last-name').textContent = skeletonText;
-    document.getElementById('view-signature').textContent = 'Loading signature...';
-    document.getElementById('view-daily-campaign-limit').textContent = skeletonText;
-    document.getElementById('view-daily-sending-limit').textContent = skeletonText;
-    document.getElementById('view-min-wait-time').textContent = skeletonText;
-    
-    // Show skeleton in advanced settings
-    document.getElementById('view-imap-host').textContent = skeletonText;
-    document.getElementById('view-imap-port').textContent = skeletonText;
-    document.getElementById('view-smtp-host').textContent = skeletonText;
-    document.getElementById('view-smtp-port').textContent = skeletonText;
-    document.getElementById('view-connection-timeout').textContent = skeletonText;
-    document.getElementById('view-retry-attempts').textContent = skeletonText;
-    document.getElementById('view-batch-size').textContent = skeletonText;
-    document.getElementById('view-ssl-enabled').textContent = 'Loading...';
-    document.getElementById('view-ssl-enabled').className = 'badge badge-sm badge-ghost';
-    document.getElementById('view-auth-method').textContent = 'Loading...';
+    // Basic Settings View
+    const basicViewIds = ['view-first-name', 'view-last-name', 'view-daily-campaign-limit', 'view-daily-sending-limit', 'view-min-wait-time'];
+    basicViewIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = '...';
+    });
+    const sigEl = document.getElementById('view-signature');
+    if (sigEl) sigEl.innerHTML = 'Loading signature...';
+
+    // Advanced Settings View
+    document.getElementById('view-connection-type').textContent = '...';
+    const advViewIds = [
+        'view-smtp-host', 'view-smtp-port', 'view-smtp-username', 'view-smtp-use-tls', 'view-smtp-use-ssl',
+        'view-access-token', 'view-refresh-token', 'view-token-expiry', // 'view-last-auth-url' is an <a>
+        'view-sender-name', 'view-default-from-email',
+        'view-min-wait-time-adv', 'view-daily-limit-adv', 'view-emails-sent'
+    ];
+    advViewIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = '...';
+    });
+    const lastAuthUrlElSkel = document.getElementById('view-last-auth-url');
+    if(lastAuthUrlElSkel) {
+        lastAuthUrlElSkel.textContent = '...';
+        lastAuthUrlElSkel.href = '#';
+    }
+    const advSigEl = document.getElementById('view-sender-signature');
+    if (advSigEl) advSigEl.innerHTML = '...';
+
+
+    // Hide conditional blocks initially during skeleton
+    document.getElementById('view-smtp-settings').classList.add('hidden');
+    document.getElementById('view-oauth-settings').classList.add('hidden');
+    document.getElementById('reauthenticate-btn').classList.add('hidden');
+
+
+    // Clear or reset fields that were part of the old generic advanced template if they still exist in HTML
+    // to avoid confusion. Many of these are no longer relevant with the new specific fields.
+    const oldGenericAdvFields = ['view-imap-host', 'view-imap-port', 'view-connection-timeout', 'view-retry-attempts', 'view-batch-size', 'view-ssl-enabled', 'view-auth-method'];
+    oldGenericAdvFields.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            if (el.classList.contains('badge')) {
+                el.textContent = '...';
+                el.className = 'badge badge-sm badge-ghost';
+            } else {
+                el.textContent = '...';
+            }
+        }
+    });
 }
 
 // Helper function to populate sidebar with account data
@@ -747,6 +828,8 @@ function populateSidebar(accountData) {
     if (accountData.email) {
         const emailParts = accountData.email.split('@')[0];
         avatarElement.textContent = emailParts.substring(0, 2).toUpperCase();
+    } else {
+        avatarElement.textContent = '??';
     }
     
     // Update status and connection
@@ -754,46 +837,111 @@ function populateSidebar(accountData) {
     const connectionElement = document.getElementById('sidebar-connection');
     
     if (accountData.status) {
-        statusElement.textContent = accountData.status;
+        statusElement.textContent = accountData.status.charAt(0).toUpperCase() + accountData.status.slice(1);
         statusElement.className = `badge badge-sm ${
-            accountData.status === 'connected' ? 'badge-success' :
-            accountData.status === 'error' ? 'badge-error' : 'badge-warning'
+            accountData.status === 'connected' ? 'badge-success text-success-content' :
+            accountData.status === 'error' ? 'badge-error text-error-content' :
+            accountData.status === 'pending' ? 'badge-warning text-warning-content' : 'badge-ghost'
         }`;
     }
     
     if (accountData.connection_type) {
-        connectionElement.textContent = `via ${accountData.connection_type}`;
+        const connectionTypeDisplayMap = {
+            'gmail': 'Gmail',
+            'outlook': 'Outlook',
+            'yahoo': 'Yahoo',
+            'imap/smtp': 'IMAP/SMTP',
+        };
+        connectionElement.textContent = `via ${connectionTypeDisplayMap[accountData.connection_type] || accountData.connection_type}`;
     }
     
-    // Update view fields with account data
-    document.getElementById('view-first-name').textContent = accountData.first_name || 'N/A';
-    document.getElementById('view-last-name').textContent = accountData.last_name || 'N/A';
-    document.getElementById('view-signature').innerHTML = (accountData.signature || 'No signature').replace(/\n/g, '<br>');
-    document.getElementById('view-daily-campaign-limit').textContent = accountData.daily_campaign_limit || '30';
-    document.getElementById('view-daily-sending-limit').textContent = accountData.daily_sending_limit || '30';
-    document.getElementById('view-min-wait-time').textContent = accountData.min_wait_time || '1';
+    // Update BASIC settings view fields (sender_name, sender_signature from model)
+    // These were 'view-first-name', 'view-last-name', 'view-signature' in the old HTML.
+    // Assuming 'view-first-name' now maps to 'sender_name' for the basic tab if it's different from advanced.
+    // For consistency, let's assume the basic tab also uses sender_name and sender_signature.
+    // If Basic tab has different fields, it needs separate IDs and population logic.
+    // For now, these might be placeholders or need adjustment based on final Basic tab structure.
+    document.getElementById('view-first-name').textContent = accountData.sender_name || 'N/A'; // Example: if basic tab uses this for sender_name
+    document.getElementById('view-last-name').textContent = ''; // This field is not in the model, clear it or remove
+    document.getElementById('view-signature').innerHTML = (accountData.sender_signature || 'No signature').replace(/\n/g, '<br>'); // Example: if basic tab uses this for signature
+
+    // Daily limits and min wait time for Basic Tab (from old HTML, mapping to new model fields)
+    document.getElementById('view-daily-campaign-limit').textContent = accountData.daily_limit || '30'; // Mapped to daily_limit
+    document.getElementById('view-daily-sending-limit').textContent = accountData.daily_limit || '30'; // Mapped to daily_limit
+    document.getElementById('view-min-wait-time').textContent = accountData.min_wait_time || '1'; // Mapped to min_wait_time
     
-    // Update advanced settings if available
-    if (accountData.imap_host) document.getElementById('view-imap-host').textContent = accountData.imap_host;
-    if (accountData.imap_port) document.getElementById('view-imap-port').textContent = accountData.imap_port;
-    if (accountData.smtp_host) document.getElementById('view-smtp-host').textContent = accountData.smtp_host;
-    if (accountData.smtp_port) document.getElementById('view-smtp-port').textContent = accountData.smtp_port;
-    if (accountData.connection_timeout) document.getElementById('view-connection-timeout').textContent = accountData.connection_timeout;
-    if (accountData.retry_attempts) document.getElementById('view-retry-attempts').textContent = accountData.retry_attempts;
-    if (accountData.batch_size) document.getElementById('view-batch-size').textContent = accountData.batch_size;
-    
-    // Update SSL status
-    const sslElement = document.getElementById('view-ssl-enabled');
-    if (accountData.ssl_enabled !== undefined) {
-        sslElement.textContent = accountData.ssl_enabled ? 'Enabled' : 'Disabled';
-        sslElement.className = `badge badge-sm ${accountData.ssl_enabled ? 'badge-success' : 'badge-error'}`;
-    }
-    
-    // Update auth method
-    if (accountData.auth_method) {
-        document.getElementById('view-auth-method').textContent = accountData.auth_method.charAt(0).toUpperCase() + accountData.auth_method.slice(1);
-    }
+    // Clear out old generic advanced view fields that are no longer used or are replaced
+    const oldGenericAdvViewFieldsToClear = ['view-imap-host', 'view-imap-port', 'view-connection-timeout', 'view-retry-attempts', 'view-batch-size', 'view-ssl-enabled', 'view-auth-method'];
+    oldGenericAdvViewFieldsToClear.forEach(id => {
+        const el = document.getElementById(id);
+        if(el) el.textContent = 'N/A'; // Or hide them if they are still in HTML
+    });
+
+
+    // NEW: Call to update advanced settings display
+    updateAdvancedSettingsView(accountData);
 }
+
+// NEW: Function to update advanced settings view based on connection type
+function updateAdvancedSettingsView(accountData) {
+    const connectionType = accountData.connection_type;
+
+    // Display connection type
+    const connectionTypeDisplayMap = {
+        'gmail': 'Gmail (OAuth2)',
+        'outlook': 'Outlook/Microsoft 365 (OAuth2)',
+        'yahoo': 'Yahoo (OAuth2)',
+        'imap/smtp': 'IMAP/SMTP',
+    };
+    document.getElementById('view-connection-type').textContent = connectionTypeDisplayMap[connectionType] || connectionType;
+
+    const viewSmtpSettings = document.getElementById('view-smtp-settings');
+    const viewOauthSettings = document.getElementById('view-oauth-settings');
+    const reauthenticateBtn = document.getElementById('reauthenticate-btn');
+
+    // Hide all conditional sections first
+    viewSmtpSettings.classList.add('hidden');
+    viewOauthSettings.classList.add('hidden');
+    reauthenticateBtn.classList.add('hidden');
+
+
+    if (connectionType === 'imap/smtp') {
+        viewSmtpSettings.classList.remove('hidden');
+        document.getElementById('view-smtp-host').textContent = accountData.smtp_host || 'N/A';
+        document.getElementById('view-smtp-port').textContent = accountData.smtp_port || 'N/A';
+        document.getElementById('view-smtp-username').textContent = accountData.smtp_username || 'N/A';
+        // Password is not displayed
+        document.getElementById('view-smtp-use-tls').textContent = accountData.smtp_use_tls ? 'Yes' : 'No';
+        document.getElementById('view-smtp-use-ssl').textContent = accountData.smtp_use_ssl ? 'Yes' : 'No';
+    } else if (['gmail', 'outlook', 'yahoo'].includes(connectionType)) {
+        viewOauthSettings.classList.remove('hidden');
+        document.getElementById('view-access-token').textContent = accountData.access_token ? 'Active' : 'N/A'; // Changed from ******** for clarity
+        document.getElementById('view-refresh-token').textContent = accountData.refresh_token ? 'Active' : 'N/A'; // Changed from ********
+        document.getElementById('view-token-expiry').textContent = accountData.token_expiry ? new Date(accountData.token_expiry).toLocaleString() : 'N/A';
+        const lastAuthUrlEl = document.getElementById('view-last-auth-url');
+        if (accountData.last_auth_url) {
+            lastAuthUrlEl.href = accountData.last_auth_url;
+            lastAuthUrlEl.textContent = "Re-authenticate / Manage Permissions";
+            lastAuthUrlEl.classList.remove('hidden');
+            // The re-auth button in the card is only for display, the main one is outside
+            reauthenticateBtn.classList.remove('hidden');
+            reauthenticateBtn.onclick = () => { window.open(accountData.last_auth_url, '_blank'); };
+        } else {
+            lastAuthUrlEl.textContent = 'N/A';
+            lastAuthUrlEl.classList.add('hidden');
+        }
+    }
+
+    // Common Advanced Settings
+    document.getElementById('view-sender-name').textContent = accountData.sender_name || 'N/A';
+    document.getElementById('view-default-from-email').textContent = accountData.default_from_email || 'N/A';
+    document.getElementById('view-sender-signature').innerHTML = (accountData.sender_signature || 'N/A').replace(/\n/g, '<br>');
+    
+    document.getElementById('view-min-wait-time-adv').textContent = accountData.min_wait_time !== undefined ? accountData.min_wait_time : 'N/A';
+    document.getElementById('view-daily-limit-adv').textContent = accountData.daily_limit !== undefined ? accountData.daily_limit : 'N/A';
+    document.getElementById('view-emails-sent').textContent = accountData.emails_sent !== undefined ? accountData.emails_sent : 'N/A';
+}
+
 
 function closeSidebar() {
     document.getElementById('sidebar').classList.add('translate-x-full');
@@ -943,17 +1091,214 @@ function loadCurrentValuesIntoEditForm() {
     document.getElementById('edit-batch-size').value = document.getElementById('view-batch-size').textContent;
     
     // SSL checkbox
-    const sslEnabled = document.getElementById('view-ssl-enabled').textContent.toLowerCase() === 'enabled';
-    document.getElementById('edit-ssl-enabled').checked = sslEnabled;
+    // const sslEnabled = document.getElementById('view-ssl-enabled').textContent.toLowerCase() === 'enabled';
+    // document.getElementById('edit-ssl-enabled').checked = sslEnabled; // This was for a generic SSL, moved to SMTP specific
     
     // Auth method
-    const authMethod = document.getElementById('view-auth-method').textContent.toLowerCase();
-    document.getElementById('edit-auth-method').value = authMethod;
+    // const authMethod = document.getElementById('view-auth-method').textContent.toLowerCase();
+    // document.getElementById('edit-auth-method').value = authMethod; // This was for a generic auth method
+
+    // NEW: Call to update advanced settings edit form
+    if (window.currentAccountData) { // Make sure data is available
+        updateAdvancedSettingsEditForm(window.currentAccountData);
+    }
 }
+
+// NEW: Function to update advanced settings edit form based on connection type
+function updateAdvancedSettingsEditForm(accountData) {
+    const connectionType = accountData.connection_type;
+
+    // Display connection type (readonly)
+    const connectionTypeDisplayMap = {
+        'gmail': 'Gmail (OAuth2)',
+        'outlook': 'Outlook/Microsoft 365 (OAuth2)',
+        'yahoo': 'Yahoo (OAuth2)',
+        'imap/smtp': 'IMAP/SMTP',
+    };
+    document.getElementById('edit-connection-type').value = connectionTypeDisplayMap[connectionType] || connectionType;
+
+
+    const editSmtpSettings = document.getElementById('edit-smtp-settings');
+    const editOauthSettings = document.getElementById('edit-oauth-settings');
+
+    // Hide all conditional sections first
+    editSmtpSettings.classList.add('hidden');
+    editOauthSettings.classList.add('hidden');
+
+    if (connectionType === 'imap/smtp') {
+        editSmtpSettings.classList.remove('hidden');
+        document.getElementById('edit-smtp-host').value = accountData.smtp_host || '';
+        document.getElementById('edit-smtp-port').value = accountData.smtp_port || '';
+        document.getElementById('edit-smtp-username').value = accountData.smtp_username || '';
+        document.getElementById('edit-smtp-password').value = ''; // Always blank for security
+        document.getElementById('edit-smtp-use-tls').checked = accountData.smtp_use_tls || false;
+        document.getElementById('edit-smtp-use-ssl').checked = accountData.smtp_use_ssl || false;
+    } else if (['gmail', 'outlook', 'yahoo'].includes(connectionType)) {
+        editOauthSettings.classList.remove('hidden');
+        document.getElementById('edit-access-token').value = accountData.access_token ? '******** (managed by provider)' : '';
+        document.getElementById('edit-refresh-token').value = accountData.refresh_token ? '******** (managed by provider)' : '';
+        document.getElementById('edit-token-expiry').value = accountData.token_expiry ? new Date(accountData.token_expiry).toLocaleString() : '';
+        // TODO: Add re-auth functionality to edit-reauthenticate-btn
+        // document.getElementById('edit-reauthenticate-btn').onclick = () => { /* initiate re-auth flow */ alert('Re-authentication process would start here.'); };
+    }
+
+    // Common Advanced Settings
+    document.getElementById('edit-sender-name').value = accountData.sender_name || '';
+    document.getElementById('edit-default-from-email').value = accountData.default_from_email || '';
+    document.getElementById('edit-sender-signature').value = accountData.sender_signature || '';
+
+    document.getElementById('edit-min-wait-time-adv').value = accountData.min_wait_time !== undefined ? accountData.min_wait_time : '';
+    document.getElementById('edit-daily-limit-adv').value = accountData.daily_limit !== undefined ? accountData.daily_limit : '';
+}
+
 
 // Save settings function
 function saveSettings() {
-    // Collect data from edit form fields
+    // Store the currently viewed account ID
+    if (!window.currentAccountData || !window.currentAccountData.id) {
+        console.error("No current account data found to save.");
+        alert("Error: No account selected or data is missing.");
+        return;
+    }
+    const accountId = window.currentAccountData.id;
+    const originalAccountData = window.currentAccountData; // For comparison
+
+    // Collect data from ALL edit form fields, basic and advanced
+    let updatedFields = {};
+
+    // Basic Settings (assuming these IDs exist from your original HTML)
+    const basicFieldsToCollect = {
+        'sender_name': 'edit-first-name', // Assuming 'edit-first-name' is for sender_name in basic
+        // 'last_name': 'edit-last-name', // No direct model field, might be part of sender_name or other logic
+        'sender_signature': 'edit-signature', // Assuming 'edit-signature' is for sender_signature in basic
+        // 'daily_campaign_limit': 'edit-daily-campaign-limit', // This seems to be daily_limit
+        // 'daily_sending_limit': 'edit-daily-sending-limit', // This also seems to be daily_limit
+        // 'min_wait_time': 'edit-min-wait-time' // This is min_wait_time
+    };
+    // NOTE: The basic settings have some overlap or different naming from the model.
+    // I will use the IDs from the "Advanced" section for sender_name, sender_signature, min_wait_time, daily_limit
+    // as they are more aligned with the model structure.
+    // If 'Basic Settings' tab has different fields, they need to be mapped or handled separately.
+
+    // For now, let's focus on fields from the 'Advanced Settings' tab and common ones.
+    // Common Advanced Settings Fields
+    updatedFields.sender_name = document.getElementById('edit-sender-name').value;
+    updatedFields.default_from_email = document.getElementById('edit-default-from-email').value;
+    updatedFields.sender_signature = document.getElementById('edit-sender-signature').value;
+    updatedFields.min_wait_time = parseInt(document.getElementById('edit-min-wait-time-adv').value, 10);
+    updatedFields.daily_limit = parseInt(document.getElementById('edit-daily-limit-adv').value, 10);
+
+    const connectionType = originalAccountData.connection_type;
+
+    if (connectionType === 'imap/smtp') {
+        updatedFields.smtp_host = document.getElementById('edit-smtp-host').value;
+        updatedFields.smtp_port = parseInt(document.getElementById('edit-smtp-port').value, 10);
+        updatedFields.smtp_username = document.getElementById('edit-smtp-username').value;
+        const smtpPassword = document.getElementById('edit-smtp-password').value;
+        if (smtpPassword) { // Only include password if a new one is entered
+            updatedFields.smtp_password = smtpPassword;
+        }
+        updatedFields.smtp_use_tls = document.getElementById('edit-smtp-use-tls').checked;
+        updatedFields.smtp_use_ssl = document.getElementById('edit-smtp-use-ssl').checked;
+    } else if (['gmail', 'outlook', 'yahoo'].includes(connectionType)) {
+        // OAuth fields are generally not directly editable by the user this way.
+        // Access token, refresh token, token expiry are managed by the OAuth flow.
+        // Re-authentication button handles this.
+        // We might only allow editing sender_name, signature, rate limits for these.
+    }
+
+    // Determine changed fields for PATCH/PUT
+    let changedData = {};
+    let changeCount = 0;
+    for (const key in updatedFields) {
+        // Special handling for potentially empty but valid values (e.g. sender_name can be cleared)
+        // or numeric fields that might become NaN if empty.
+        let formValue = updatedFields[key];
+        let originalValue = originalAccountData[key];
+
+        if (typeof originalValue === 'number' && isNaN(formValue)) {
+            formValue = null; // Or handle as error, depending on requirements
+        }
+        if (key === 'smtp_password' && !formValue) continue; // Don't send empty password
+
+        if (formValue !== originalValue) {
+            // For boolean fields, ensure we are comparing correctly
+            if (typeof originalValue === 'boolean') {
+                 if (Boolean(formValue) !== originalValue) {
+                    changedData[key] = Boolean(formValue);
+                    changeCount++;
+                 }
+            } else if (key.endsWith('_port') || key === 'min_wait_time' || key === 'daily_limit') {
+                if (parseInt(formValue, 10) !== parseInt(originalValue, 10)) {
+                    changedData[key] = parseInt(formValue, 10);
+                    changeCount++;
+                }
+            }
+            else {
+                changedData[key] = formValue;
+                changeCount++;
+            }
+        }
+    }
+
+    // If smtp_password was the only thing changed, and it was empty, it means no change.
+    if (changeCount === 1 && changedData.hasOwnProperty('smtp_password') && !changedData.smtp_password) {
+        changeCount = 0;
+        delete changedData.smtp_password;
+    }
+
+
+    if (changeCount === 0) {
+        alert('No changes detected.');
+        toggleEditMode(false); // Exit edit mode
+        return;
+    }
+
+    const method = changeCount === 1 && !changedData.hasOwnProperty('smtp_password') ? 'PATCH' : 'PUT';
+    // If only password is changed, it's still a PATCH. If password + other, it's PUT.
+    // A more robust check for PATCH: if only one key exists in changedData.
+    const isPatch = Object.keys(changedData).length === 1;
+    const finalMethod = isPatch ? 'PATCH' : 'PUT';
+
+    console.log('Saving settings with method:', finalMethod, 'Data:', changedData);
+
+    // API Call
+    fetch(`/api/email-accounts/${accountId}/`, {
+        method: finalMethod,
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken'), // Make sure getCookie is defined
+        },
+        body: JSON.stringify(changedData),
+    })
+    .then(response => {
+        if (!response.ok) {
+            return response.json().then(err => { throw new Error(err.detail || 'Failed to save settings') });
+        }
+        return response.json();
+    })
+    .then(savedAccountData => {
+        alert('Settings saved successfully!');
+        // Update the global currentAccountData with the response from the server
+        window.currentAccountData = savedAccountData;
+
+        // Re-populate the view with the updated data
+        populateSidebar(savedAccountData); // This will also call updateAdvancedSettingsView
+
+        toggleEditMode(false); // Exit edit mode
+
+        // Optional: update the table row if data shown there changed
+        updateTableRow(savedAccountData);
+
+    })
+    .catch(error => {
+        console.error('Error saving settings:', error);
+        alert(`Error saving settings: ${error.message}`);
+        // Optionally, do not exit edit mode or revert changes in form
+    });
+
+    // Old logic for collecting settings:
+    /*
     const basicSettings = {
         firstName: document.getElementById('edit-first-name').value,
         lastName: document.getElementById('edit-last-name').value,
